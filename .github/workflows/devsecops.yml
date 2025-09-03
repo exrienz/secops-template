@@ -160,5 +160,5 @@ jobs:
           context: .
           push: true
           tags: |
-            ${{ secrets.DOCKERHUB_USERNAME }}/sentinelv2:${{ github.sha }}
-            ${{ secrets.DOCKERHUB_USERNAME }}/sentinelv2:latest
+            ${{ secrets.DOCKERHUB_USERNAME }}/${{ github.repository }}:${{ github.sha }}
+            ${{ secrets.DOCKERHUB_USERNAME }}/${{ github.repository }}:latest
