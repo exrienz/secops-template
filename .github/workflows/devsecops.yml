@@ -8,11 +8,15 @@ on:
         required: false
         type: boolean
         default: true
-      enable_sonarqube:
+      enable_sast:
         required: false
         type: boolean
         default: true
       enable_docker_build:
+        required: false
+        type: boolean
+        default: true
+      enable_container_scan:          # 🔹 new switch for Trivy scan
         required: false
         type: boolean
         default: true
@@ -65,7 +69,7 @@ jobs:
   # SonarQube Analysis
   # ----------------------------
   sast-sonarqube:
-    if: ${{ inputs.enable_sonarqube }}
+    if: ${{ inputs.enable_sast }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
@@ -169,3 +173,34 @@ jobs:
           tags: |
             ${{ env.IMAGE_TAG_SHA }}
             ${{ env.IMAGE_TAG_LATEST }}
+
+  # ----------------------------
+  # Trivy Image Scan
+  # ----------------------------
+  trivy-scan:
+    if: ${{ inputs.enable_container_scan }}
+    runs-on: ubuntu-latest
+    needs: docker-build
+    steps:
+      - name: Install Trivy
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y wget curl
+          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sudo sh -s -- -b /usr/local/bin
+
+      - name: Fetch Trivy HTML Template
+        run: |
+          wget https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/html.tpl
+          sudo cp html.tpl /usr/bin/html.tpl
+
+      - name: Run Trivy Scan on Image
+        run: |
+          mkdir -p artifacts
+          trivy image --format template --template "@/usr/bin/html.tpl" \
+            -o artifacts/container_va_report.html ${{ env.IMAGE_TAG_LATEST }}
+
+      - name: Upload Trivy Report
+        uses: actions/upload-artifact@v4
+        with:
+          name: trivy-report
+          path: artifacts/container_scan_report.html
