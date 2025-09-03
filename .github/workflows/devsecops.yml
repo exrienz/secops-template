@@ -1,36 +1,45 @@
-name: DevSecOps Template
+name: DevSecOps Pipeline Template
 
 on:
   workflow_call:
     inputs:
-      run_sca:
-        description: "Run SCA/SBOM scan"
+      enable_sca:
         required: false
-        default: true
         type: boolean
-      run_bandit:
-        description: "Run Bandit scan"
+        default: true
+      enable_bandit:
         required: false
-        default: true
         type: boolean
-      run_sonarqube:
-        description: "Run SonarQube scan"
+        default: true
+      enable_sonarqube:
         required: false
-        default: true
         type: boolean
-      run_build:
-        description: "Build & Push Docker image"
+        default: true
+      enable_docker_build:
         required: false
-        default: true
         type: boolean
+        default: true
+      languages:
+        required: false
+        type: string
+        default: "python,javascript"
+
+    secrets:
+      SONAR_PROJECT_KEY:
+        required: false
+      SONAR_TOKEN:
+        required: false
+      SONAR_HOST_URL:
+        required: false
+      DOCKERHUB_USERNAME:
+        required: false
+      DOCKERHUB_TOKEN:
+        required: false
 
 jobs:
 
-  # ----------------------------
-  # SBOM / SCA
-  # ----------------------------
   sca-scan:
-    if: ${{ inputs.run_sca }}
+    if: ${{ inputs.enable_sca }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
@@ -39,17 +48,21 @@ jobs:
         with:
           scan_type: 'grypefs'
           target: '.'
-      - run: echo "$SBOM_SHARE_URL" > sbom-url.txt
-      - uses: actions/upload-artifact@v4
-        with:
-          name: sbom-report
-          path: sbom-url.txt
 
-  # ----------------------------
-  # SonarQube
-  # ----------------------------
+  sast-bandit:
+    if: ${{ inputs.enable_bandit }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+      - run: pip install bandit
+      - name: Bandit Scan
+        run: bandit -r ./src || true
+
   sast-sonarqube:
-    if: ${{ inputs.run_sonarqube }}
+    if: ${{ inputs.enable_sonarqube }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
@@ -62,40 +75,56 @@ jobs:
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
-        continue-on-error: true
 
-  # ----------------------------
-  # Build & Push
-  # ----------------------------
   docker-build:
-    if: ${{ inputs.run_build }}
+    if: ${{ inputs.enable_docker_build }}
     runs-on: ubuntu-latest
     needs: [sca-scan, sast-bandit, sast-sonarqube]
+    strategy:
+      matrix:
+        language: ${{ fromJSON('["' + join(split(inputs.languages, ','), '","') + '"]') }}
     steps:
       - uses: actions/checkout@v3
-      - uses: actions/setup-python@v4
+
+      - name: Setup Python
+        if: matrix.language == 'python'
+        uses: actions/setup-python@v4
         with:
           python-version: '3.10'
-          cache: 'pip'
-      - run: pip install pre-commit
-      - name: Run Pre-commit Hooks
+
+      - name: Setup Node.js
+        if: matrix.language == 'javascript'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Install Universal Linters
         run: |
-          pre-commit install
-          pre-commit run --all-files --show-diff-on-failure
-        continue-on-error: true
-      - name: Set Image Tags
-        id: tagger
+          npm install -g prettier eslint stylelint || true
+          pip install autopep8 black || true
+          sudo apt-get update && sudo apt-get install -y php-codesniffer || true
+
+      - name: Run Linter/Formatter (Auto-Fix)
         run: |
-          echo "tag=$(date +'%Y%m%d')-${GITHUB_SHA::7}" >> $GITHUB_OUTPUT
-          echo "latest=latest" >> $GITHUB_OUTPUT
-      - uses: docker/login-action@v3
+          case "${{ matrix.language }}" in
+            python) black . && autopep8 --in-place --recursive . ;;
+            javascript) prettier --write . && npx eslint . --fix ;;
+            java) echo "TODO: add java formatter (spotless/google-java-format)" ;;
+            php) phpcbf . || true ;;
+            html|css) prettier --write . && npx stylelint "**/*.{css,scss}" --fix || true ;;
+          esac
+
+      - name: Login to DockerHub
+        uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
-      - uses: docker/build-push-action@v5
+
+      - name: Build & Push Docker Image
+        uses: docker/build-push-action@v5
         with:
           context: .
           push: true
           tags: |
-            ${{ secrets.DOCKERHUB_USERNAME }}/sentinelv2:${{ steps.tagger.outputs.tag }}
+            ${{ secrets.DOCKERHUB_USERNAME }}/sentinelv2:${{ github.sha }}
             ${{ secrets.DOCKERHUB_USERNAME }}/sentinelv2:latest
