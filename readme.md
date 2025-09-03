@@ -32,7 +32,7 @@ It supports:
 
 ```yaml
 # .github/workflows/devsecops.yml
-name: DevSecOps Pipeline (Consumer)
+name: DevSecOps Pipeline
 
 on:
   push:
@@ -47,8 +47,9 @@ jobs:
       enable_sca: true
       enable_sonarqube: true
       enable_docker_build: true
-      languages: "python,javascript,java,php"  # languages to lint/format
+      languages: "python,javascript,java,php"
     secrets: inherit
+
 ```
 
 2. **Secrets Required** (in repository settings → Secrets):
