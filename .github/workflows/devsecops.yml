@@ -91,54 +91,44 @@ jobs:
     if: ${{ inputs.enable_docker_build }}
     runs-on: ubuntu-latest
     needs: [sca-scan, sast-sonarqube]
-    strategy:
-      matrix:
-        language: ${{ fromJSON('["' + join(split(inputs.languages, ','), '","') + '"]') }}
     steps:
       - uses: actions/checkout@v3
 
-      # Python
-      - name: Setup Python
-        if: matrix.language == 'python'
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.10'
-
-      # Node.js (for JS, HTML, CSS)
-      - name: Setup Node.js
-        if: matrix.language == 'javascript' || matrix.language == 'html' || matrix.language == 'css'
-        uses: actions/setup-node@v4
-        with:
-          node-version: '18'
-
-      # Java
-      - name: Setup Java
-        if: matrix.language == 'java'
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '17'
-
-      # Install linters
-      - name: Install Linters
+      - name: Split languages
+        id: split_languages
         run: |
+          IFS=',' read -ra LANGS <<< "${{ inputs.languages }}"
+          echo "languages=${LANGS[*]}" >> $GITHUB_OUTPUT
+
+      - name: Loop over languages
+        run: |
+          IFS=' ' read -ra LANGS <<< "${{ steps.split_languages.outputs.languages }}"
           mkdir -p artifacts
-          npm install -g prettier eslint stylelint || true
-          pip install autopep8 black || true
-          sudo apt-get update && sudo apt-get install -y php-codesniffer || true
-          curl -L -o google-java-format.jar \
-            https://github.com/google/google-java-format/releases/download/v1.22.0/google-java-format-1.22-all-deps.jar || true
+          for lang in "${LANGS[@]}"; do
+            echo "Processing $lang..."
 
-      # Run linter/formatter
-      - name: Run Linter / Formatter
-        run: |
-          case "${{ matrix.language }}" in
-            python) black . | tee artifacts/python-lint.log && autopep8 --in-place --recursive . ;;
-            javascript) prettier --write . | tee artifacts/js-prettier.log && npx eslint . --fix | tee artifacts/js-eslint.log ;;
-            java) find . -name "*.java" -exec java -jar google-java-format.jar --replace {} + | tee artifacts/java-format.log ;;
-            php) phpcbf . | tee artifacts/phpcbf.log || true ;;
-            html|css) prettier --write . | tee artifacts/html-prettier.log && npx stylelint "**/*.{css,scss}" --fix | tee artifacts/css-stylelint.log || true ;;
-          esac
+            case "$lang" in
+              python)
+                python -m pip install --upgrade pip
+                pip install black autopep8
+                black . | tee artifacts/python-lint.log
+                autopep8 --in-place --recursive . ;;
+              javascript)
+                npm install -g prettier eslint
+                prettier --write . | tee artifacts/js-prettier.log
+                npx eslint . --fix | tee artifacts/js-eslint.log ;;
+              java)
+                curl -L -o google-java-format.jar https://github.com/google/google-java-format/releases/download/v1.22.0/google-java-format-1.22-all-deps.jar
+                find . -name "*.java" -exec java -jar google-java-format.jar --replace {} + | tee artifacts/java-format.log ;;
+              php)
+                sudo apt-get update && sudo apt-get install -y php-codesniffer
+                phpcbf . | tee artifacts/phpcbf.log || true ;;
+              html|css)
+                npm install -g prettier stylelint
+                prettier --write . | tee artifacts/html-prettier.log
+                npx stylelint "**/*.{css,scss}" --fix | tee artifacts/css-stylelint.log || true ;;
+            esac
+          done
 
       - name: Upload Lint Reports
         uses: actions/upload-artifact@v4
@@ -146,14 +136,12 @@ jobs:
           name: lint-reports
           path: artifacts/
 
-      # Docker login
       - name: Login to DockerHub
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      # Docker build & push
       - name: Build & Push Docker Image
         uses: docker/build-push-action@v5
         with:
