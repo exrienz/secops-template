@@ -46,8 +46,9 @@ jobs:
     uses: exrienz/secops-template/.github/workflows/devsecops.yml@main
     with:
       enable_sca: true
-      enable_sonarqube: true
+      enable_sast: true
       enable_docker_build: true
+      enable_container_scan: true
       languages: "python,javascript,java,php"
     secrets: inherit
 ```
