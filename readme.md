@@ -11,7 +11,6 @@ It includes **security scans, linting/auto-fix, and Docker build & push** in a c
   - SBOM generation with [codenotary/sbom.sh](https://github.com/codenotary/sbom.sh)  
 
 - **SAST (Static Application Security Testing)**  
-  - Python security scan with **Bandit**  
   - **SonarQube** scan support  
 
 - **Linting & Auto-Fix (Multi-Language)**  
