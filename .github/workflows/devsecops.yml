@@ -142,11 +142,21 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
+      - name: Set Docker Image Tags
+        id: docker-tags
+        run: |
+          # lowercase and replace invalid characters with '-'
+          REPO_NAME=$(echo "${GITHUB_REPOSITORY}" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9_.-]/-/g')
+      
+          echo "IMAGE_TAG_SHA=${{ secrets.DOCKERHUB_USERNAME }}/$REPO_NAME:${GITHUB_SHA}" >> $GITHUB_ENV
+          echo "IMAGE_TAG_LATEST=${{ secrets.DOCKERHUB_USERNAME }}/$REPO_NAME:latest" >> $GITHUB_ENV
+      
       - name: Build & Push Docker Image
         uses: docker/build-push-action@v5
         with:
           context: .
           push: true
           tags: |
-            ${{ secrets.DOCKERHUB_USERNAME }}/${{ github.repository }}:${{ github.sha }}
-            ${{ secrets.DOCKERHUB_USERNAME }}/${{ github.repository }}:latest
+            ${{ env.IMAGE_TAG_SHA }}
+            ${{ env.IMAGE_TAG_LATEST }}
+
