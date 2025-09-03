@@ -158,8 +158,8 @@ jobs:
         id: docker-tags
         run: |
           REPO_NAME=$(echo "${GITHUB_REPOSITORY##*/}" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9._-]/-/g')
-          echo "IMAGE_TAG_SHA=$REPO_NAME:${GITHUB_SHA}" >> $GITHUB_ENV
-          echo "IMAGE_TAG_LATEST=$REPO_NAME:latest" >> $GITHUB_ENV
+          echo "IMAGE_TAG_SHA=${{ secrets.DOCKERHUB_USERNAME }}/$REPO_NAME:${GITHUB_SHA}" >> $GITHUB_ENV
+          echo "IMAGE_TAG_LATEST=${{ secrets.DOCKERHUB_USERNAME }}/$REPO_NAME:latest" >> $GITHUB_ENV
 
       - name: Build & Push Docker Image
         uses: docker/build-push-action@v5
