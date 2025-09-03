@@ -187,7 +187,7 @@ jobs:
       - name: Fetch Trivy HTML Template
         if: ${{ inputs.enable_container_scan }}
         run: |
-          wget https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/html.tpl
+          wget https://raw.githubusercontent.com/exrienz/trivy-html-template/refs/heads/main/html.tpl
           sudo cp html.tpl /usr/bin/html.tpl
 
       - name: Run Trivy Scan on Image
