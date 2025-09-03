@@ -4,7 +4,7 @@ This repository provides a **reusable GitHub Actions DevSecOps pipeline** for mu
 It supports:
 
 * SBOM/SCA generation
-* SonarQube analysis
+* SonarQube analysis (project key automatically uses repo name)
 * Multi-language linting & auto-fix (Python, Java, JavaScript, PHP, HTML, CSS)
 * Docker build & push
 * Artifact collection for reports and logs
@@ -14,15 +14,15 @@ It supports:
 
 ## 🔹 Features
 
-| Feature                    | Description                                                      |
-| -------------------------- | ---------------------------------------------------------------- |
-| SBOM / SCA                 | Generates a software bill of materials using codenotary/grypefs. |
-| SonarQube Analysis         | Runs SonarQube scans and collects logs as artifacts.             |
-| Multi-Language Lint/Format | Auto-fixes code in Python, Java, JavaScript, PHP, HTML, CSS.     |
-| Docker Build & Push        | Builds Docker image after lint/format and pushes to DockerHub.   |
-| Artifact Collection        | Saves SBOM, SonarQube, and linter logs for review.               |
-| Workflow Switches          | Consumers can enable/disable SBOM, SonarQube, Docker build.      |
-| Language Selection         | Consumers can specify which languages to lint/format.            |
+| Feature                    | Description                                                                                  |
+| -------------------------- | -------------------------------------------------------------------------------------------- |
+| SBOM / SCA                 | Generates a software bill of materials using codenotary/grypefs.                             |
+| SonarQube Analysis         | Runs SonarQube scans with project key derived from repo name and collects logs as artifacts. |
+| Multi-Language Lint/Format | Auto-fixes code in Python, Java, JavaScript, PHP, HTML, CSS.                                 |
+| Docker Build & Push        | Builds Docker image after lint/format and pushes to DockerHub.                               |
+| Artifact Collection        | Saves SBOM, SonarQube, and linter logs for review.                                           |
+| Workflow Switches          | Consumers can enable/disable SBOM, SonarQube, Docker build.                                  |
+| Language Selection         | Consumers can specify which languages to lint/format.                                        |
 
 ---
 
@@ -49,16 +49,16 @@ jobs:
       enable_docker_build: true
       languages: "python,javascript,java,php"
     secrets: inherit
-
 ```
 
 2. **Secrets Required** (in repository settings → Secrets):
 
-* `SONAR_PROJECT_KEY`
 * `SONAR_TOKEN`
 * `SONAR_HOST_URL`
 * `DOCKERHUB_USERNAME`
 * `DOCKERHUB_TOKEN`
+
+> **Note:** `SONAR_PROJECT_KEY` is **no longer required**. The workflow automatically converts your repo name to a valid SonarQube project key.
 
 ---
 
@@ -105,5 +105,4 @@ Docker images are tagged automatically:
 ```
 
 Build happens **after all lint/format fixes** have been applied.
-
 
