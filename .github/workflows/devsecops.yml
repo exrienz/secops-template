@@ -60,35 +60,41 @@ jobs:
           name: sbom-report
           path: artifacts/
 
-  # ----------------------------
-  # SonarQube Analysis
-  # ----------------------------
-  sast-sonarqube:
-    if: ${{ inputs.enable_sonarqube }}
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
+# ----------------------------
+# SonarQube Analysis
+# ----------------------------
+sast-sonarqube:
+  if: ${{ inputs.enable_sonarqube }}
+  runs-on: ubuntu-latest
+  steps:
+    - uses: actions/checkout@v3
 
-      - name: SonarQube Scan
-        uses: sonarsource/sonarqube-scan-action@v2
-        with:
-          projectBaseDir: .
-          args: >
-            -Dsonar.projectKey=${{ secrets.SONAR_PROJECT_KEY }}
-        env:
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+    - name: Set Project Key
+      run: |
+        REPO_NAME=$(echo "${GITHUB_REPOSITORY##*/}" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9._-]/-/g')
+        echo "SONAR_PROJECT_KEY=$REPO_NAME" >> $GITHUB_ENV
 
-      - name: Save Sonar Logs
-        run: |
-          mkdir -p artifacts
-          cp .scannerwork/report-task.txt artifacts/sonarqube-report.txt || true
+    - name: SonarQube Scan
+      uses: sonarsource/sonarqube-scan-action@v2
+      with:
+        projectBaseDir: .
+        args: >
+          -Dsonar.projectKey=${{ env.SONAR_PROJECT_KEY }}
+      env:
+        SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
 
-      - name: Upload SonarQube Report
-        uses: actions/upload-artifact@v4
-        with:
-          name: sonar-reports
-          path: artifacts/
+    - name: Save Sonar Logs
+      run: |
+        mkdir -p artifacts
+        cp .scannerwork/report-task.txt artifacts/sonarqube-report.txt || true
+
+    - name: Upload SonarQube Report
+      uses: actions/upload-artifact@v4
+      with:
+        name: sonar-reports
+        path: artifacts/
+
 
   # ----------------------------
   # Docker Build & Multi-Language Lint
