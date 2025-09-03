@@ -42,15 +42,18 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
+
       - name: SBOM Generation (codenotary)
         uses: codenotary/sbom.sh-create@main
         with:
           scan_type: 'grypefs'
           target: '.'
+
       - name: Save SBOM URL
         run: |
           mkdir -p artifacts
           echo "$SBOM_SHARE_URL" > artifacts/sbom-url.txt
+
       - name: Upload SBOM Report
         uses: actions/upload-artifact@v4
         with:
@@ -65,6 +68,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
+
       - name: SonarQube Scan
         uses: sonarsource/sonarqube-scan-action@v2
         with:
@@ -74,10 +78,12 @@ jobs:
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+
       - name: Save Sonar Logs
         run: |
           mkdir -p artifacts
           cp .scannerwork/report-task.txt artifacts/sonarqube-report.txt || true
+
       - name: Upload SonarQube Report
         uses: actions/upload-artifact@v4
         with:
@@ -94,23 +100,23 @@ jobs:
     steps:
       - uses: actions/checkout@v3
 
+      - name: Prepare Artifacts
+        run: mkdir -p artifacts
+
       - name: Split languages
         id: split_languages
         run: |
           IFS=',' read -ra LANGS <<< "${{ inputs.languages }}"
           echo "languages=${LANGS[*]}" >> $GITHUB_OUTPUT
 
-      - name: Loop over languages
+      - name: Run Linters
         run: |
           IFS=' ' read -ra LANGS <<< "${{ steps.split_languages.outputs.languages }}"
-          mkdir -p artifacts
           for lang in "${LANGS[@]}"; do
             echo "Processing $lang..."
-
             case "$lang" in
               python)
-                python -m pip install --upgrade pip
-                pip install black autopep8
+                pip install --upgrade pip black autopep8
                 black . | tee artifacts/python-lint.log
                 autopep8 --in-place --recursive . ;;
               javascript)
@@ -118,7 +124,7 @@ jobs:
                 prettier --write . | tee artifacts/js-prettier.log
                 npx eslint . --fix | tee artifacts/js-eslint.log ;;
               java)
-                curl -L -o google-java-format.jar https://github.com/google/google-java-format/releases/download/v1.22.0/google-java-format-1.22-all-deps.jar
+                curl -sSL -o google-java-format.jar https://github.com/google/google-java-format/releases/download/v1.22.0/google-java-format-1.22-all-deps.jar
                 find . -name "*.java" -exec java -jar google-java-format.jar --replace {} + | tee artifacts/java-format.log ;;
               php)
                 sudo apt-get update && sudo apt-get install -y php-codesniffer
@@ -136,7 +142,7 @@ jobs:
           name: lint-reports
           path: artifacts/
 
-      - name: Login to DockerHub
+      - name: DockerHub Login
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
@@ -145,12 +151,10 @@ jobs:
       - name: Set Docker Image Tags
         id: docker-tags
         run: |
-          # lowercase and replace invalid characters with '-'
-          REPO_NAME=$(echo "${GITHUB_REPOSITORY}" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9_.-]/-/g')
-      
+          REPO_NAME=$(echo "${GITHUB_REPOSITORY,,}" | tr '/_' '--')
           echo "IMAGE_TAG_SHA=${{ secrets.DOCKERHUB_USERNAME }}/$REPO_NAME:${GITHUB_SHA}" >> $GITHUB_ENV
           echo "IMAGE_TAG_LATEST=${{ secrets.DOCKERHUB_USERNAME }}/$REPO_NAME:latest" >> $GITHUB_ENV
-      
+
       - name: Build & Push Docker Image
         uses: docker/build-push-action@v5
         with:
@@ -159,4 +163,3 @@ jobs:
           tags: |
             ${{ env.IMAGE_TAG_SHA }}
             ${{ env.IMAGE_TAG_LATEST }}
-
