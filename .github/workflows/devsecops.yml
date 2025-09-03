@@ -22,7 +22,7 @@ on:
       languages:
         required: false
         type: string
-        default: "python,javascript"
+        default: "python,javascript,java,php,html,css"
 
     secrets:
       SONAR_PROJECT_KEY:
@@ -86,30 +86,42 @@ jobs:
     steps:
       - uses: actions/checkout@v3
 
+      # Python
       - name: Setup Python
         if: matrix.language == 'python'
         uses: actions/setup-python@v4
         with:
           python-version: '3.10'
 
+      # Node.js (for JS, HTML, CSS)
       - name: Setup Node.js
-        if: matrix.language == 'javascript'
+        if: matrix.language == 'javascript' || matrix.language == 'html' || matrix.language == 'css'
         uses: actions/setup-node@v4
         with:
           node-version: '18'
+
+      # Java
+      - name: Setup Java
+        if: matrix.language == 'java'
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
 
       - name: Install Universal Linters
         run: |
           npm install -g prettier eslint stylelint || true
           pip install autopep8 black || true
           sudo apt-get update && sudo apt-get install -y php-codesniffer || true
+          curl -L -o /usr/local/bin/google-java-format \
+            https://github.com/google/google-java-format/releases/download/v1.22.0/google-java-format-1.22-all-deps.jar || true
 
       - name: Run Linter/Formatter (Auto-Fix)
         run: |
           case "${{ matrix.language }}" in
             python) black . && autopep8 --in-place --recursive . ;;
             javascript) prettier --write . && npx eslint . --fix ;;
-            java) echo "TODO: add java formatter (spotless/google-java-format)" ;;
+            java) find . -name "*.java" -exec java -jar /usr/local/bin/google-java-format --replace {} + ;;
             php) phpcbf . || true ;;
             html|css) prettier --write . && npx stylelint "**/*.{css,scss}" --fix || true ;;
           esac
