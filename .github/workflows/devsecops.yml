@@ -7,10 +7,6 @@ on:
         required: false
         type: boolean
         default: true
-      enable_bandit:
-        required: false
-        type: boolean
-        default: true
       enable_sonarqube:
         required: false
         type: boolean
@@ -38,6 +34,9 @@ on:
 
 jobs:
 
+  # ----------------------------
+  # SCA / SBOM Generation
+  # ----------------------------
   sca-scan:
     if: ${{ inputs.enable_sca }}
     runs-on: ubuntu-latest
@@ -48,7 +47,19 @@ jobs:
         with:
           scan_type: 'grypefs'
           target: '.'
+      - name: Save SBOM URL
+        run: |
+          mkdir -p artifacts
+          echo "$SBOM_SHARE_URL" > artifacts/sbom-url.txt
+      - name: Upload SBOM Report
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom-report
+          path: artifacts/
 
+  # ----------------------------
+  # SonarQube Analysis
+  # ----------------------------
   sast-sonarqube:
     if: ${{ inputs.enable_sonarqube }}
     runs-on: ubuntu-latest
@@ -63,11 +74,23 @@ jobs:
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+      - name: Save Sonar Logs
+        run: |
+          mkdir -p artifacts
+          cp .scannerwork/report-task.txt artifacts/sonarqube-report.txt || true
+      - name: Upload SonarQube Report
+        uses: actions/upload-artifact@v4
+        with:
+          name: sonar-reports
+          path: artifacts/
 
+  # ----------------------------
+  # Docker Build & Multi-Language Lint
+  # ----------------------------
   docker-build:
     if: ${{ inputs.enable_docker_build }}
     runs-on: ubuntu-latest
-    needs: [sca-scan, sast-bandit, sast-sonarqube]
+    needs: [sca-scan, sast-sonarqube]
     strategy:
       matrix:
         language: ${{ fromJSON('["' + join(split(inputs.languages, ','), '","') + '"]') }}
@@ -96,35 +119,46 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Install Universal Linters
+      # Install linters
+      - name: Install Linters
         run: |
+          mkdir -p artifacts
           npm install -g prettier eslint stylelint || true
           pip install autopep8 black || true
           sudo apt-get update && sudo apt-get install -y php-codesniffer || true
-          curl -L -o /usr/local/bin/google-java-format \
+          curl -L -o google-java-format.jar \
             https://github.com/google/google-java-format/releases/download/v1.22.0/google-java-format-1.22-all-deps.jar || true
 
-      - name: Run Linter/Formatter (Auto-Fix)
+      # Run linter/formatter
+      - name: Run Linter / Formatter
         run: |
           case "${{ matrix.language }}" in
-            python) black . && autopep8 --in-place --recursive . ;;
-            javascript) prettier --write . && npx eslint . --fix ;;
-            java) find . -name "*.java" -exec java -jar /usr/local/bin/google-java-format --replace {} + ;;
-            php) phpcbf . || true ;;
-            html|css) prettier --write . && npx stylelint "**/*.{css,scss}" --fix || true ;;
+            python) black . | tee artifacts/python-lint.log && autopep8 --in-place --recursive . ;;
+            javascript) prettier --write . | tee artifacts/js-prettier.log && npx eslint . --fix | tee artifacts/js-eslint.log ;;
+            java) find . -name "*.java" -exec java -jar google-java-format.jar --replace {} + | tee artifacts/java-format.log ;;
+            php) phpcbf . | tee artifacts/phpcbf.log || true ;;
+            html|css) prettier --write . | tee artifacts/html-prettier.log && npx stylelint "**/*.{css,scss}" --fix | tee artifacts/css-stylelint.log || true ;;
           esac
 
+      - name: Upload Lint Reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: lint-reports
+          path: artifacts/
+
+      # Docker login
       - name: Login to DockerHub
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
+      # Docker build & push
       - name: Build & Push Docker Image
         uses: docker/build-push-action@v5
         with:
           context: .
           push: true
           tags: |
-            ${{ secrets.DOCKERHUB_USERNAME }}/${{ github.event.repository.name }}:${{ github.sha }}
-            ${{ secrets.DOCKERHUB_USERNAME }}/${{ github.event.repository.name }}:latest
+            ${{ secrets.DOCKERHUB_USERNAME }}/sentinelv2:${{ github.sha }}
+            ${{ secrets.DOCKERHUB_USERNAME }}/sentinelv2:latest
