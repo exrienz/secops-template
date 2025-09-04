@@ -38,7 +38,6 @@ name: DevSecOps Pipeline
 on:
   push:
     branches: [main, develop]
-  pull_request:
   workflow_dispatch:
 
 jobs:
