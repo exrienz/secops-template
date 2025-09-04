@@ -20,6 +20,10 @@ on:
         required: false
         type: boolean
         default: true
+      enable_auto_lint:               # 🔹 new switch for auto lint
+        required: false
+        type: boolean
+        default: true
       languages:
         required: false
         type: string
@@ -120,6 +124,7 @@ jobs:
           echo "languages=${LANGS[*]}" >> $GITHUB_OUTPUT
 
       - name: Run Linters
+        if: ${{ inputs.enable_auto_lint }}
         run: |
           IFS=' ' read -ra LANGS <<< "${{ steps.split_languages.outputs.languages }}"
           for lang in "${LANGS[@]}"; do
@@ -147,6 +152,7 @@ jobs:
           done
 
       - name: Upload Lint Reports
+        if: ${{ inputs.enable_auto_lint }}
         uses: actions/upload-artifact@v4
         with:
           name: lint-reports
