@@ -48,6 +48,7 @@ jobs:
       enable_sast: true
       enable_docker_build: true
       enable_container_scan: true
+      enable_auto_lint: false
       languages: "python,javascript,java,php"
     secrets: inherit
 ```
