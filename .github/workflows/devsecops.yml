@@ -55,10 +55,16 @@ jobs:
     steps:
       - uses: actions/checkout@v3
 
+      - name: Install Dependencies
+        run: sudo apt-get update && sudo apt-get install -y jq curl tar gzip
+
       - name: Install Gitleaks
         run: |
-          curl -sSL https://github.com/gitleaks/gitleaks/releases/latest/download/gitleaks-linux-amd64.tar.gz | tar -xz
+          GITLEAKS_VERSION=$(curl -s https://api.github.com/repos/gitleaks/gitleaks/releases/latest | jq -r .tag_name)
+          curl -sL "https://github.com/gitleaks/gitleaks/releases/download/${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" -o gitleaks.tar.gz
+          tar -xzf gitleaks.tar.gz gitleaks
           sudo mv gitleaks /usr/local/bin/gitleaks
+          gitleaks version
 
       - name: Run Gitleaks Scan
         run: |
