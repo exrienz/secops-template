@@ -55,20 +55,11 @@ jobs:
     steps:
       - uses: actions/checkout@v3
 
-      - name: Install Dependencies
-        run: sudo apt-get update && sudo apt-get install -y curl
-
-      - name: Install Gitleaks
-        run: |
-          curl -sSL https://github.com/gitleaks/gitleaks/releases/latest/download/gitleaks-linux-amd64 -o gitleaks
-          chmod +x gitleaks
-          sudo mv gitleaks /usr/local/bin/gitleaks
-          gitleaks version
-
       - name: Run Gitleaks Scan
-        run: |
-          mkdir -p artifacts
-          gitleaks detect --source . --report-format json --report-path artifacts/gitleaks-report.json || true
+        uses: zricethezav/gitleaks-action@v2
+        with:
+          args: detect --source . --report-format json --report-path artifacts/gitleaks-report.json
+          allow-credentials: true
 
       - name: Upload Gitleaks Report
         uses: actions/upload-artifact@v4
