@@ -1,9 +1,12 @@
-# .github/workflows/devsecops.yml
 name: DevSecOps Pipeline Template
 
 on:
   workflow_call:
     inputs:
+      enable_gitleaks:                # 🔹 new switch for gitleaks
+        required: false
+        type: boolean
+        default: true
       enable_sca:
         required: false
         type: boolean
@@ -16,11 +19,11 @@ on:
         required: false
         type: boolean
         default: true
-      enable_container_scan:          # 🔹 new switch for Trivy scan
+      enable_container_scan:
         required: false
         type: boolean
         default: true
-      enable_auto_lint:               # 🔹 new switch for auto lint
+      enable_auto_lint:
         required: false
         type: boolean
         default: true
@@ -44,10 +47,36 @@ on:
 jobs:
 
   # ----------------------------
+  # Gitleaks Secret Scan
+  # ----------------------------
+  gitleaks-scan:
+    if: ${{ inputs.enable_gitleaks }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Install Gitleaks
+        run: |
+          curl -sSL https://github.com/gitleaks/gitleaks/releases/latest/download/gitleaks-linux-amd64.tar.gz | tar -xz
+          sudo mv gitleaks /usr/local/bin/gitleaks
+
+      - name: Run Gitleaks Scan
+        run: |
+          mkdir -p artifacts
+          gitleaks detect --source . --report-format json --report-path artifacts/gitleaks-report.json || true
+
+      - name: Upload Gitleaks Report
+        uses: actions/upload-artifact@v4
+        with:
+          name: gitleaks-report
+          path: artifacts/gitleaks-report.json
+
+  # ----------------------------
   # SCA / SBOM Generation
   # ----------------------------
   sca-scan:
     if: ${{ inputs.enable_sca }}
+    needs: gitleaks-scan
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
@@ -74,6 +103,7 @@ jobs:
   # ----------------------------
   sast-sonarqube:
     if: ${{ inputs.enable_sast }}
+    needs: gitleaks-scan
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
@@ -109,8 +139,8 @@ jobs:
   # ----------------------------
   docker-build:
     if: ${{ inputs.enable_docker_build }}
-    runs-on: ubuntu-latest
     needs: [sca-scan, sast-sonarqube]
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
 
