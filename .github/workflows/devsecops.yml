@@ -60,36 +60,73 @@ jobs:
 
       - name: Install Gitleaks CLI
         run: |
-          # Robust Gitleaks install: detect arch, fetch latest release asset and install
+          # Robust Gitleaks install with fallback to fixed version
           set -euo pipefail
-          echo "Detecting latest gitleaks release..."
-          LATEST_TAG=$(curl -sS https://api.github.com/repos/zricethezav/gitleaks/releases/latest \
-            | grep -oP '"tag_name":\s*"\K(.*)(?=")')
+          echo "Installing Gitleaks..."
+          
+          # Try to get latest version, fallback to known stable version
+          LATEST_TAG=$(curl -sS -H "Accept: application/vnd.github+json" \
+            https://api.github.com/repos/zricethezav/gitleaks/releases/latest 2>/dev/null \
+            | jq -r '.tag_name // empty') || LATEST_TAG=""
+          
+          # Fallback to a known stable version if API fails
           if [ -z "$LATEST_TAG" ]; then
-            echo "Failed to determine latest gitleaks release tag"; exit 1
+            echo "⚠️ Could not fetch latest version, using fallback version v8.18.4"
+            LATEST_TAG="v8.18.4"
           fi
+          
           VERSION="${LATEST_TAG#v}"
-          echo "Latest tag: $LATEST_TAG (version $VERSION)"
+          echo "Using tag: $LATEST_TAG (version $VERSION)"
 
-          # map uname arch to gitleaks asset arch naming
+          # Map uname arch to gitleaks asset arch naming
           UNAME_M=$(uname -m)
           case "$UNAME_M" in
-            x86_64|amd64) ASSET_ARCH="x86_64" ;;   # gitleaks uses x86_64 naming in assets
+            x86_64|amd64) ASSET_ARCH="x64" ;;
             aarch64|arm64) ASSET_ARCH="arm64" ;;
-            *) ASSET_ARCH="$UNAME_M" ;;
+            *) 
+              echo "❌ Unsupported architecture: $UNAME_M"
+              exit 1
+              ;;
           esac
 
-          OS=linux
+          OS="linux"
           ASSET_NAME="gitleaks_${VERSION}_${OS}_${ASSET_ARCH}.tar.gz"
           DOWNLOAD_URL="https://github.com/zricethezav/gitleaks/releases/download/${LATEST_TAG}/${ASSET_NAME}"
-          echo "Downloading $DOWNLOAD_URL"
-          # curl with fail-on-error so a 404 fails the step
-          curl -fsSL "$DOWNLOAD_URL" -o "$ASSET_NAME"
+          
+          echo "Downloading from: $DOWNLOAD_URL"
+          
+          # Download with retries
+          MAX_RETRIES=3
+          RETRY_COUNT=0
+          while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
+            if curl -fsSL "$DOWNLOAD_URL" -o "$ASSET_NAME"; then
+              echo "✅ Download successful"
+              break
+            else
+              RETRY_COUNT=$((RETRY_COUNT + 1))
+              if [ $RETRY_COUNT -lt $MAX_RETRIES ]; then
+                echo "⚠️ Download failed, retrying ($RETRY_COUNT/$MAX_RETRIES)..."
+                sleep 2
+              else
+                echo "❌ Download failed after $MAX_RETRIES attempts"
+                exit 1
+              fi
+            fi
+          done
+          
+          # Extract and install
           tar -xzf "$ASSET_NAME"
           sudo mv gitleaks /usr/local/bin/gitleaks
           sudo chmod +x /usr/local/bin/gitleaks
           rm -f "$ASSET_NAME"
-          echo "gitleaks installed: $(gitleaks --version || true)"
+          
+          # Verify installation
+          if gitleaks version; then
+            echo "✅ Gitleaks installed successfully"
+          else
+            echo "❌ Gitleaks installation verification failed"
+            exit 1
+          fi
 
       - name: Run Gitleaks Scan
         id: gitleaks
