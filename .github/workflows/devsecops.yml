@@ -47,13 +47,16 @@ on:
 jobs:
 
   # ----------------------------
-  # Gitleaks Secret Scan
+  # Gitleaks Secret Scan (RUNS FIRST)
   # ----------------------------
   gitleaks-scan:
     if: ${{ inputs.enable_gitleaks }}
     runs-on: ubuntu-latest
+    continue-on-error: true  # Allow workflow to continue even if this job fails
     steps:
       - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0  # Fetch full history for better secret detection
 
       - name: Install Gitleaks CLI
         run: |
@@ -89,12 +92,24 @@ jobs:
           echo "gitleaks installed: $(gitleaks --version || true)"
 
       - name: Run Gitleaks Scan
-        continue-on-error: true
+        id: gitleaks
+        continue-on-error: true  # Allow step to continue even if secrets are found
         run: |
           mkdir -p artifacts
           # run gitleaks CLI and write JSON report
-          # keep the exit code (step allowed to fail) so the step will be marked as "allowed to fail"
           gitleaks detect --source . --report-format json --report-path artifacts/gitleaks-report.json
+          EXIT_CODE=$?
+          
+          # Check if secrets were found
+          if [ $EXIT_CODE -eq 1 ]; then
+            echo "⚠️ WARNING: Secrets detected by Gitleaks!"
+            echo "secrets_found=true" >> $GITHUB_OUTPUT
+          else
+            echo "✅ No secrets detected"
+            echo "secrets_found=false" >> $GITHUB_OUTPUT
+          fi
+          
+          exit 0  # Always exit successfully to allow workflow continuation
 
       - name: Upload Gitleaks Report
         if: always()
@@ -103,11 +118,24 @@ jobs:
           name: gitleaks-report
           path: artifacts/gitleaks-report.json
 
+      - name: Comment on PR if secrets found
+        if: steps.gitleaks.outputs.secrets_found == 'true' && github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: '⚠️ **Gitleaks Secret Scan Warning**\n\nPotential secrets have been detected in this PR. Please review the [Gitleaks report](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}) for details.'
+            })
+
   # ----------------------------
   # SCA / SBOM Generation
   # ----------------------------
   sca-scan:
-    if: ${{ inputs.enable_sca }}
+    if: ${{ inputs.enable_sca && always() }}  # Run even if gitleaks fails
+    needs: [gitleaks-scan]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
@@ -133,7 +161,8 @@ jobs:
   # SonarQube Analysis
   # ----------------------------
   sast-sonarqube:
-    if: ${{ inputs.enable_sast }}
+    if: ${{ inputs.enable_sast && always() }}  # Run even if gitleaks fails
+    needs: [gitleaks-scan]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
@@ -168,8 +197,8 @@ jobs:
   # Docker Build, Lint & Container Scan
   # ----------------------------
   docker-build:
-    if: ${{ inputs.enable_docker_build }}
-    needs: [sca-scan, sast-sonarqube]
+    if: ${{ inputs.enable_docker_build && always() }}  # Run even if gitleaks fails
+    needs: [gitleaks-scan, sca-scan, sast-sonarqube]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
