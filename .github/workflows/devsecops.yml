@@ -80,7 +80,6 @@ jobs:
   # ----------------------------
   sca-scan:
     if: ${{ inputs.enable_sca }}
-    needs: gitleaks-scan
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
@@ -107,7 +106,6 @@ jobs:
   # ----------------------------
   sast-sonarqube:
     if: ${{ inputs.enable_sast }}
-    needs: gitleaks-scan
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
