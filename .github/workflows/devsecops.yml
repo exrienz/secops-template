@@ -57,8 +57,36 @@ jobs:
 
       - name: Install Gitleaks CLI
         run: |
-          # install script from gitleaks repo - installs latest into /usr/local/bin
-          curl -sSL https://raw.githubusercontent.com/zricethezav/gitleaks/main/install.sh | sudo bash -s -- -b /usr/local/bin
+          # Robust Gitleaks install: detect arch, fetch latest release asset and install
+          set -euo pipefail
+          echo "Detecting latest gitleaks release..."
+          LATEST_TAG=$(curl -sS https://api.github.com/repos/zricethezav/gitleaks/releases/latest \
+            | grep -oP '"tag_name":\s*"\K(.*)(?=")')
+          if [ -z "$LATEST_TAG" ]; then
+            echo "Failed to determine latest gitleaks release tag"; exit 1
+          fi
+          VERSION="${LATEST_TAG#v}"
+          echo "Latest tag: $LATEST_TAG (version $VERSION)"
+
+          # map uname arch to gitleaks asset arch naming
+          UNAME_M=$(uname -m)
+          case "$UNAME_M" in
+            x86_64|amd64) ASSET_ARCH="x86_64" ;;   # gitleaks uses x86_64 naming in assets
+            aarch64|arm64) ASSET_ARCH="arm64" ;;
+            *) ASSET_ARCH="$UNAME_M" ;;
+          esac
+
+          OS=linux
+          ASSET_NAME="gitleaks_${VERSION}_${OS}_${ASSET_ARCH}.tar.gz"
+          DOWNLOAD_URL="https://github.com/zricethezav/gitleaks/releases/download/${LATEST_TAG}/${ASSET_NAME}"
+          echo "Downloading $DOWNLOAD_URL"
+          # curl with fail-on-error so a 404 fails the step
+          curl -fsSL "$DOWNLOAD_URL" -o "$ASSET_NAME"
+          tar -xzf "$ASSET_NAME"
+          sudo mv gitleaks /usr/local/bin/gitleaks
+          sudo chmod +x /usr/local/bin/gitleaks
+          rm -f "$ASSET_NAME"
+          echo "gitleaks installed: $(gitleaks --version || true)"
 
       - name: Run Gitleaks Scan
         continue-on-error: true
