@@ -305,6 +305,8 @@ jobs:
           tags: |
             ${{ env.IMAGE_TAG_SHA }}
             ${{ env.IMAGE_TAG_LATEST }}
+          no-cache: true
+          provenance: false
 
       # ----------------------------
       # Trivy Image Scan (inside docker-build job)
