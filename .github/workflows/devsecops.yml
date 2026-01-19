@@ -304,6 +304,22 @@ jobs:
           REPO_NAME=$(echo "${GITHUB_REPOSITORY##*/}" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9._-]/-/g')
           echo "IMAGE_TAG_SHA=${{ secrets.DOCKERHUB_USERNAME }}/$REPO_NAME:${GITHUB_SHA}" >> $GITHUB_ENV
           echo "IMAGE_TAG_LATEST=${{ secrets.DOCKERHUB_USERNAME }}/$REPO_NAME:latest" >> $GITHUB_ENV
+          
+          # Extract version from CHANGELOG.md if it exists (Keep a Changelog format)
+          VERSION=""
+          if [ -f "CHANGELOG.md" ]; then
+            # Parse the first version entry: ## [x.x.x] or ## [x.x.x-qualifier]
+            VERSION=$(grep -oP '## \[\K[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9]+)?' CHANGELOG.md | head -1)
+          fi
+          
+          if [ -n "$VERSION" ]; then
+            echo "Found version in CHANGELOG: $VERSION"
+            echo "IMAGE_TAG_VERSION=${{ secrets.DOCKERHUB_USERNAME }}/$REPO_NAME:$VERSION" >> $GITHUB_ENV
+            echo "HAS_VERSION_TAG=true" >> $GITHUB_ENV
+          else
+            echo "No version found in CHANGELOG.md, skipping version tag"
+            echo "HAS_VERSION_TAG=false" >> $GITHUB_ENV
+          fi
 
       - name: Build & Push Docker Image
         uses: docker/build-push-action@v5
@@ -314,6 +330,7 @@ jobs:
           tags: |
             ${{ env.IMAGE_TAG_SHA }}
             ${{ env.IMAGE_TAG_LATEST }}
+            ${{ env.HAS_VERSION_TAG == 'true' && env.IMAGE_TAG_VERSION || '' }}
           no-cache: true
           provenance: false
 
